@@ -105,6 +105,11 @@ public class MainActivity extends AppCompatActivity {
         mViewPager = (ViewPager) findViewById(R.id.pager);
         mViewPager.setAdapter(mImagePagerAdapter);
 
+        // Workaround for AppCompat issue not showing ViewPager titles
+        ViewPager.LayoutParams params = (ViewPager.LayoutParams)
+                findViewById(R.id.pager_tab_strip).getLayoutParams();
+        params.isDecor = true;
+
         // When the visible image changes, send a screen view hit.
         mViewPager.addOnPageChangeListener(new ViewPager.SimpleOnPageChangeListener() {
             @Override
@@ -171,24 +176,23 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.menu_share:
-                String name = getCurrentImageTitle();
-                String text = "I'd love you to hear about " + name;
+        int i = item.getItemId();
+        if (i == R.id.menu_share) {
+            String name = getCurrentImageTitle();
+            String text = "I'd love you to hear about " + name;
 
-                Intent sendIntent = new Intent();
-                sendIntent.setAction(Intent.ACTION_SEND);
-                sendIntent.putExtra(Intent.EXTRA_TEXT, text);
-                sendIntent.setType("text/plain");
-                startActivity(sendIntent);
+            Intent sendIntent = new Intent();
+            sendIntent.setAction(Intent.ACTION_SEND);
+            sendIntent.putExtra(Intent.EXTRA_TEXT, text);
+            sendIntent.setType("text/plain");
+            startActivity(sendIntent);
 
-                // [START custom_event]
-                Bundle params = new Bundle();
-                params.putString("image_name", name);
-                params.putString("full_text", text);
-                mFirebaseAnalytics.logEvent("share_image", params);
-                // [END custom_event]
-                break;
+            // [START custom_event]
+            Bundle params = new Bundle();
+            params.putString("image_name", name);
+            params.putString("full_text", text);
+            mFirebaseAnalytics.logEvent("share_image", params);
+            // [END custom_event]
         }
         return false;
     }
