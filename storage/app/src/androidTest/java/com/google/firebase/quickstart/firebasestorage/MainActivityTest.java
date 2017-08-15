@@ -1,24 +1,33 @@
 package com.google.firebase.quickstart.firebasestorage;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.Instrumentation;
 import android.content.Intent;
-import android.provider.MediaStore;
-import android.support.test.InstrumentationRegistry;
+import android.net.Uri;
+import android.os.Build;
+import android.support.test.espresso.Espresso;
 import android.support.test.espresso.NoMatchingViewException;
 import android.support.test.espresso.ViewInteraction;
 import android.support.test.espresso.intent.Intents;
 import android.support.test.rule.ActivityTestRule;
 import android.support.test.runner.AndroidJUnit4;
 import android.test.suitebuilder.annotation.LargeTest;
+import android.util.Log;
 
 import org.hamcrest.Matcher;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.io.File;
+import java.io.IOException;
+
+import static android.support.test.InstrumentationRegistry.getInstrumentation;
+import static android.support.test.InstrumentationRegistry.getTargetContext;
 import static android.support.test.espresso.Espresso.onView;
 import static android.support.test.espresso.Espresso.openActionBarOverflowOrOptionsMenu;
 import static android.support.test.espresso.action.ViewActions.click;
@@ -38,36 +47,55 @@ public class MainActivityTest {
 
     private static final String TAG = "MainActivityTest";
 
+    private ServiceIdlingResource mUploadIdlingResource;
+
     @Rule
     public ActivityTestRule<MainActivity> mActivityTestRule = new ActivityTestRule<>(MainActivity.class);
+
+    @BeforeClass
+    public static void grantPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            String packageName = getTargetContext().getPackageName();
+            String testPackageName = packageName + ".test";
+
+            // Grant "WRITE_EXTERNAL_STORAGE"
+            getInstrumentation().getUiAutomation().executeShellCommand(
+                    "pm grant " + packageName + Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            getInstrumentation().getUiAutomation().executeShellCommand(
+                    "pm grant " + testPackageName + Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
+    }
 
     @Before
     public void before() {
         // Initialize intents
         Intents.init();
 
-        // Create fake RESULT_OK Intent
-        Intent intent = new Intent();
-        intent.putExtra("is-espresso-test", true);
-        Instrumentation.ActivityResult result = new Instrumentation.ActivityResult(
-                Activity.RESULT_OK, intent);
-
-        // Intercept photo intent
-        Matcher<Intent> pictureIntentMatch = allOf(hasAction(MediaStore.ACTION_IMAGE_CAPTURE));
-        intending(pictureIntentMatch).respondWith(result);
+        // Idling resource
+        mUploadIdlingResource = new ServiceIdlingResource(mActivityTestRule.getActivity(),
+                MyUploadService.class);
+        Espresso.registerIdlingResources(mUploadIdlingResource);
     }
 
     @After
     public void after() {
         // Release intents
         Intents.release();
+
+        // Idling resource
+        if (mUploadIdlingResource != null) {
+            Espresso.unregisterIdlingResources(mUploadIdlingResource);
+        }
     }
 
 
     @Test
-    public void uploadPhotoTest() {
+    public void uploadPhotoTest() throws InterruptedException {
         // Log out to start
         logOutIfPossible();
+
+        // Create a temp file
+        createTempFile();
 
         // Click sign in
         ViewInteraction signInButton = onView(
@@ -75,7 +103,8 @@ public class MainActivityTest {
                         isDisplayed()));
         signInButton.perform(click());
 
-        // TODO(samstern): what if permission has not been granted yet?
+        // Wait for sign in
+        Thread.sleep(5000);
 
         // Click upload
         ViewInteraction uploadButton = onView(
@@ -97,9 +126,38 @@ public class MainActivityTest {
                         isDisplayed()));
         downloadButton.perform(click());
 
+        // Wait for download
+        Thread.sleep(5000);
+
         // Confirm that a success dialog appears
         onView(withText(R.string.success)).inRoot(isDialog())
                 .check(matches(isDisplayed()));
+    }
+
+    /**
+     * Create a file to be selected by tests.
+     */
+    private void createTempFile() {
+        // Create fake RESULT_OK Intent
+        Intent intent = new Intent();
+        intent.putExtra("is-espresso-test", true);
+
+        // Create a temporary file for the result of the intent
+        File external = mActivityTestRule.getActivity().getExternalFilesDir(null);
+        File imageFile = new File(external, "tmp.jpg");
+        try {
+            imageFile.createNewFile();
+        } catch (IOException e) {
+            Log.e(TAG, "createNewFile", e);
+        }
+        intent.setData(Uri.fromFile(imageFile));
+
+        Instrumentation.ActivityResult result = new Instrumentation.ActivityResult(
+                Activity.RESULT_OK, intent);
+
+        // Intercept photo intent
+        Matcher<Intent> pictureIntentMatch = allOf(hasAction(Intent.ACTION_GET_CONTENT));
+        intending(pictureIntentMatch).respondWith(result);
     }
 
     /**
@@ -107,7 +165,7 @@ public class MainActivityTest {
      */
     private void logOutIfPossible() {
         try {
-            openActionBarOverflowOrOptionsMenu(InstrumentationRegistry.getTargetContext());
+            openActionBarOverflowOrOptionsMenu(getTargetContext());
             onView(withText(R.string.log_out)).perform(click());
         } catch (NoMatchingViewException e) {
             // Ignore exception since we only want to do this operation if it's easy.

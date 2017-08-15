@@ -3,43 +3,40 @@
 # Exit on error
 set -e
 
-# List of all samples
-samples=( admob analytics app-indexing auth config crash database dynamiclinks invites messaging storage )
-
-# Limit memory usage
-OPTS='-Dorg.gradle.jvmargs="-Xmx2048m -XX:+HeapDumpOnOutOfMemoryError"'
-
 # Work off travis
-if [[ -v TRAVIS_PULL_REQUEST ]]; then
+if [[ ! -z TRAVIS_PULL_REQUEST ]]; then
   echo "TRAVIS_PULL_REQUEST: $TRAVIS_PULL_REQUEST"
 else
   echo "TRAVIS_PULL_REQUEST: unset, setting to false"
   TRAVIS_PULL_REQUEST=false
 fi
 
-for sample in "${samples[@]}"
-do
-  echo "Building ${sample}"
+# Copy mock google-services file
+echo "Using mock google-services.json"
+cp mock-google-services.json admob/app/google-services.json
+cp mock-google-services.json analytics/app/google-services.json
+cp mock-google-services.json app-indexing/app/google-services.json
+cp mock-google-services.json auth/app/google-services.json
+cp mock-google-services.json config/app/google-services.json
+cp mock-google-services.json crash/app/google-services.json
+cp mock-google-services.json database/app/google-services.json
+cp mock-google-services.json dynamiclinks/app/google-services.json
+cp mock-google-services.json invites/app/google-services.json
+cp mock-google-services.json perf/app/google-services.json
+cp mock-google-services.json messaging/app/google-services.json
+cp mock-google-services.json storage/app/google-services.json
 
-  # Go to sample directory
-  cd $sample
+# Install preview deps
+${ANDROID_HOME}/tools/bin/sdkmanager --channel=3 \
+  "tools" "platform-tools" "build-tools;26.0.0-rc2" "platforms;android-26"
 
-  # Copy mock google-services file if necessary
-  if [ ! -f ./app/google-services.json ]; then
-    echo "Using mock google-services.json"
-    cp ../mock-google-services.json ./app/google-services.json
-  fi
-
-  # Build
-  if [ $TRAVIS_PULL_REQUEST = false ] ; then
-    # For a merged commit, build all configurations.
-    GRADLE_OPTS=$OPTS ./gradlew clean build
-  else
-    # On a pull request, just build debug which is much faster and catches
-    # obvious errors.
-    GRADLE_OPTS=$OPTS ./gradlew clean :app:assembleDebug
-  fi
-
-  # Back to parent directory.
-  cd -
-done
+# Build
+if [ $TRAVIS_PULL_REQUEST = false ] ; then
+  echo "Building full project"
+  # For a merged commit, build all configurations.
+  ./gradlew clean build
+else
+  # On a pull request, just build debug which is much faster and catches
+  # obvious errors.
+  ./gradlew clean assembleDebug check
+fi
